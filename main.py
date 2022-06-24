@@ -1,3 +1,29 @@
+'''
+class MonteCarlo:
+    
+    if model = 'GBM': 
+        params: 
+            S0,     asset price at initial time
+            K,      strike price
+            T,      time to maturity
+            r,      risk free rate
+            q,      dividend rate
+            v,      constant volatility
+            method, use closed-form formula or Monte Carlo
+    if model = 'Heston:
+        params:
+            S0,     asset price at initial time
+            K,      strike price
+            T,      time to maturity
+            r,      risk free rate
+            q,      dividend rate
+            v0,     volatility at initial time
+            theta,  long-term volatility
+            kappa,  recover speed
+            gamma,  volatility of volatility
+            rho,    correlation between two brownian motions
+
+'''
 # ---------------example---------------
 # a = MonteCarlo(model='GBM', S0=10, K=11, T=1, r=0.03, q=0, v=0.3, method='formula')
 # b = a.generate_S(5,20)
