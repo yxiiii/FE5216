@@ -1,11 +1,4 @@
 #%%
-# a = MonteCarlo(model='GBM', S0=10, K=11, T=1, r=0.03, q=0, v=0.3)
-# b = a.generate_S(5,20)
-# c = a.pricer(optionType='c')
-
-# a = MonteCarlo(model='Heston', S0=10, K=11, T=1, r=0.03, q=0, v0=0.2, theta=0.15, kappa=8, gamma=0.5, rho=0.2)
-# b = a.generate_S(5,20)
-# c = a.pricer(optionType='c')
 import numpy as np
 
 class MonteCarlo:
@@ -19,6 +12,8 @@ class MonteCarlo:
         # extra params
         if model == 'GBM':
             self.modelType = 'GBM'
+            # use closed formula or MonteCarlo 
+            self.method = kwargs['method'] 
             # constant volatility
             self.v = kwargs['v']
         if model == 'Heston':
@@ -34,8 +29,8 @@ class MonteCarlo:
             # correlation between two brownian motions
             self.rho = kwargs['rho']
     
-    def generate_S(self, n_paths, n_steps, antiVar=True):
-        # list basic params needed
+    def generate_S(self, n_paths, n_steps, antiVar=True):   
+        
         self.n_paths = n_paths
         self.n_steps = n_steps
         dt = self.T / n_steps
@@ -43,16 +38,17 @@ class MonteCarlo:
         S0 = self.S0
         
         if self.modelType == 'GBM':
-            # list extra params needed
+            # if we use closed-form formula, no need to generate S paths
+            if self.method == 'formula':
+                return
+            # f we use Monte Carlo, generate S paths
             v = self.v
-            
             dw = np.random.normal(size=(n_paths, n_steps))
             if antiVar == True:
                 n_paths *= 2
                 self.n_paths = n_paths
                 dw = np.concatenate((dw, -dw), axis=0)
             w = np.cumsum(dw, axis=1)
-            # BS closed-form formula
             log_S = np.log(S0) \
                     + (r - v ** 2 / 2) * dt *  np.arange(1, n_steps + 1) \
                     + v * np.sqrt(dt) * w
@@ -61,7 +57,6 @@ class MonteCarlo:
             S = np.concatenate((S0, S), axis=1) 
             self.S = S 
         if self.modelType == 'Heston':
-            # list extra params needed
             rho = self.rho
             v0 = self.v0
             theta = self.theta
@@ -91,7 +86,6 @@ class MonteCarlo:
                             + r * S[:, i] * dt \
                             + np.sqrt(v[:, i]) * S[:, i] * np.sqrt(dt) * dw_s[:, i]
             self.S = S    
-        return S 
     
     def LS(self, optionType='c', func_list=[lambda x: x ** 0, lambda x: x], buy_cost=0, sell_cost=0):
         dt = self.T / self.n_steps
@@ -107,12 +101,22 @@ class MonteCarlo:
 
  
     def pricer(self, optionType='c', American=False):
-        S = self.S
+
+        S0 = self.S0
         K = self.K
         T = self.T
         r = self.r 
         q = self.q
-
+        
+        if self.modelType == 'GBM':
+            if self.method == 'formula':
+                from scipy.stats import norm 
+                v = self.v
+                N = norm.cdf
+                d1 = ( np.log( S0 / K ) + ( r - q + T * ( v ** 2 ) / 2) ) / ( v * np.sqrt(T) )
+                d2 = d1 - v * np.sqrt(T)
+                option_price = S0 * N(d1) - np.exp(-r * T) * K * N(d2) 
+                return option_price
 
         if optionType == 'c':
             f_payoff = lambda x: np.maximum(x - K, 0)
@@ -121,10 +125,11 @@ class MonteCarlo:
         else: 
             raise(ValueError('option type should be c or p.'))
 
+        S = self.S
         if not American:
             payoff = f_payoff(S[:, -1])
             dc_payoff = payoff * np.exp(-r * T)
-        else: 
+        if American:
             if optionType == 'c' and q == 0:
                 payoff = f_payoff(S[: -1])
                 dc_payoff = payoff * np.exp(-r * T)

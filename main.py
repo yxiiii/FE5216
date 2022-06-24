@@ -1,3 +1,13 @@
+# ---------------example---------------
+# a = MonteCarlo(model='GBM', S0=10, K=11, T=1, r=0.03, q=0, v=0.3, method='formula')
+# b = a.generate_S(5,20)
+# c = a.pricer(optionType='c')
+
+# a = MonteCarlo(model='Heston', S0=10, K=11, T=1, r=0.03, q=0, v0=0.2, theta=0.15, kappa=8, gamma=0.5, rho=0.2)
+# b = a.generate_S(5,20)
+# c = a.pricer(optionType='c')
+
+
 #%%
 from MonteCarlo import MonteCarlo
 import pandas as pd
@@ -6,20 +16,20 @@ from tqdm import tqdm
 
 #%% 
 # GBM
-# cols = ['moneyness', 'tau', 'r', 'vol', 'option price']
-# data = pd.DataFrame(columns=cols)
-# for S0 in tqdm(np.arange(10, 20+0.01, 1)):
-#     for K in np.arange(10, 20+0.01, 1):
-#         for tau in np.arange(0.3, 0.95+0.1, 0.1):
-#             for r in np.arange(0.03, 0.08+0.01, 0.01):
-#                 for vol in np.arange(0.2, 0.9+0.01, 0.1):
-#                     moneyness = np.log( S0 / K ) 
-#                     MC = MonteCarlo(model='GBM', S0=S0, K=K, T=tau, r=r, q=0, v=vol)
-#                     MC.generate_S(1000,10)
-#                     option_price = MC.pricer(optionType='c')
-#                     data = pd.concat([data, pd.DataFrame([[moneyness, tau, r, vol, option_price]], columns=cols)], axis=0)
+cols = ['moneyness', 'tau', 'r', 'vol', 'option price']
+data = pd.DataFrame(columns=cols)
+for S0 in tqdm(np.arange(10, 20+0.01, 1)):
+    for K in np.arange(10, 20+0.01, 1):
+        for tau in np.arange(0.3, 0.95+0.1, 0.1):
+            for r in np.arange(0.03, 0.08+0.01, 0.01):
+                for vol in np.arange(0.2, 0.9+0.01, 0.1):
+                    moneyness = np.log( S0 / K ) 
+                    MC = MonteCarlo(model='GBM', S0=S0, K=K, T=tau, r=r, q=0, v=vol, method='MC')
+                    MC.generate_S(1000,10)
+                    option_price = MC.pricer(optionType='c')
+                    data = pd.concat([data, pd.DataFrame([[moneyness, tau, r, vol, option_price]], columns=cols)], axis=0)
 
-# data.to_csv('data_GBM.csv', index=False)
+data.to_csv('data_GBM.csv', index=False)
 
 #%%
 # Heston
