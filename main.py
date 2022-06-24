@@ -1,6 +1,6 @@
 '''
 class MonteCarlo:
-    
+
     if model = 'GBM': 
         params: 
             S0,     asset price at initial time
@@ -19,7 +19,7 @@ class MonteCarlo:
             q,      dividend rate
             v0,     volatility at initial time
             theta,  long-term volatility
-            kappa,  recover speed
+            kappa,  reversion speed
             gamma,  volatility of volatility
             rho,    correlation between two brownian motions
 
@@ -35,92 +35,109 @@ class MonteCarlo:
 
 
 #%%
+from tabnanny import verbose
 from MonteCarlo import MonteCarlo
 import pandas as pd
 import numpy as np
 from tqdm import tqdm 
-
-#%% 
+import random
+import logging as logger
+from sklearn.neural_network import MLPRegressor
+from sklearn.linear_model import LinearRegression
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import GridSearchCV
+ 
 # GBM
-cols = ['moneyness', 'tau', 'r', 'vol', 'option price']
-data = pd.DataFrame(columns=cols)
-for S0 in tqdm(np.arange(10, 20+0.01, 1)):
-    for K in np.arange(10, 20+0.01, 1):
-        for tau in np.arange(0.3, 0.95+0.1, 0.1):
-            for r in np.arange(0.03, 0.08+0.01, 0.01):
-                for vol in np.arange(0.2, 0.9+0.01, 0.1):
-                    moneyness = np.log( S0 / K ) 
-                    MC = MonteCarlo(model='GBM', S0=S0, K=K, T=tau, r=r, q=0, v=vol, method='MC')
-                    MC.generate_S(1000,10)
-                    option_price = MC.pricer(optionType='c')
-                    data = pd.concat([data, pd.DataFrame([[moneyness, tau, r, vol, option_price]], columns=cols)], axis=0)
+# cols = ['moneyness', 'tau', 'r', 'vol', 'option price']
+# data = pd.DataFrame(columns=cols)
+# for i in tqdm(range(100000)):
+#     S0 = random.uniform(10,20)
+#     K = random.uniform(10,20)
+#     tau = random.uniform(0.3, 0.95)
+#     r = random.uniform(0.03, 0.08)
+#     vol = random.uniform(0.02, 0.9)
+#     moneyness = np.log( S0 / K ) 
+#     MC = MonteCarlo(model='GBM', S0=S0, K=K, T=tau, r=r, q=0, v=vol, method='formula')
+#     MC.generate_S(1000,10)
+#     option_price = MC.pricer(optionType='c')
+#     data = pd.concat([data, pd.DataFrame([[moneyness, tau, r, vol, option_price]], columns=cols)], axis=0)
 
-data.to_csv('data_GBM.csv', index=False)
+# data.to_csv('data_GBM.csv', index=False)
 
-#%%
 # Heston
 # cols = ['moneyness', 'tau', 'r', 'vol0', 'theta', 'kappa', 'gamma', 'rho', 'option price']
 # data = pd.DataFrame(columns=cols)
-# for S0 in np.arange(10, 20+0.1, 0.5): # 20
-#     for K in tqdm(np.arange(10, 20+1, 0.5)): # 20
-#         for tau in np.arange(0.3, 1+0.1, 0.1): # 7
-#             for r in np.arange(0.03, 0.03+0.01, 0.01): # 2
-#                 for vol0 in np.arange(0.2, 0.2+0.1, 0.1): # 1
-#                     for theta in np.arange(0.2, 0.2+0.1, 0.1): # 1
-#                         for kappa in np.arange(0.5, 2+0.5, 0.5): # 3
-#                             for gamma in np.arange(0.3, 0.3+0.1, 0.1): # 2
-#                                 for rho in np.arange(-0.2, -0.2+0.1, 0.1): # 1
-#                                     moneyness = np.log( S0 / K ) 
-#                                     MC = MonteCarlo(model='Heston', S0=S0, K=K, T=tau, r=r, q=0, v0=vol0, theta=theta, kappa=kappa, gamma=gamma, rho=rho)
-#                                     MC.generate_S(1000,10)
-#                                     option_price = MC.pricer(optionType='c')
-#                                     data = pd.concat([data, pd.DataFrame([[moneyness, tau, r, vol0, theta, kappa, gamma, rho, option_price]], columns=cols)], axis=0)
+# for i in tqdm(range(100000)):
+#     S0 = random.uniform(10,20)
+#     K = random.uniform(10,20)
+#     tau = random.uniform(0.1, 1.4)
+#     r = random.uniform(0, 0.1)
+#     vol0 = random.uniform(0.02, 0.9)
+#     theta = random.uniform(0, 0.5)
+#     kappa = random.uniform(0, 2)
+#     gamma = random.uniform(0, 0.5)
+#     rho = random.uniform(-0.95, 0)
+#     moneyness = np.log( S0 / K )                      
+#     MC = MonteCarlo(model='Heston', S0=S0, K=K, T=tau, r=r, q=0, v0=vol0, theta=theta, kappa=kappa, gamma=gamma, rho=rho)
+#     MC.generate_S(500,10)
+#     option_price = MC.pricer(optionType='c')
+#     data = pd.concat([data, pd.DataFrame([[moneyness, tau, r, vol0, theta, kappa, gamma, rho, option_price]], columns=cols)], axis=0)
 
 # data.to_csv('data_Heston.csv', index=False)
 
-# %%
+# Use Linear Regression as benchmark
+def LR(model='GBM'):
+    if model == 'GBM':
+        data = pd.read_csv('data_GBM.csv')
+        x = data[['moneyness', 'tau', 'r', 'vol']]
+        y = data['option price']
+    if model == 'Heston':
+        data = pd.read_csv('data_Heston.csv')
+        x = data[['moneyness', 'tau', 'r', 'vol0', 'theta', 'kappa', 'gamma', 'rho']]
+        y = data['option price']
+    
+    x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.2, random_state=None, shuffle=True)
+    
+    StdScaler = StandardScaler()
+    x_train = StdScaler.fit_transform(x_train)
 
-# GBM
-from sklearn.neural_network import MLPRegressor
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
+    lr = LinearRegression()
+    lr.fit(x_train, y_train)
 
-data = pd.read_csv('data_GBM.csv')
-x = data[['moneyness', 'tau', 'r', 'vol']]
-y = data['option price']
-x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.2, random_state=2, shuffle=True)
+    StdScaler = StandardScaler()
+    x_test = StdScaler.fit_transform(x_test)
 
-StdScaler = StandardScaler()
-x_train = StdScaler.fit_transform(x_train)
+    score = lr.score(x_test, y_test)
+    print(f'Model: {model}, LR r2 = {score}')
 
-ANN = MLPRegressor(hidden_layer_sizes=(4,), activation='relu', solver='adam', batch_size='auto', learning_rate_init=0.05, max_iter=50, shuffle=True, verbose=True, validation_fraction=0.1, beta_1=0.9, beta_2=0.999, epsilon=1e-08)
-ANN.fit(x_train, y_train)
+def ANN(model='GBM'):
+    if model == 'GBM':
+        data = pd.read_csv('data_GBM.csv')
+        x = data[['moneyness', 'tau', 'r', 'vol']]
+        y = data['option price']
+    if model == 'Heston':
+        data = pd.read_csv('data_Heston.csv')
+        x = data[['moneyness', 'tau', 'r', 'vol0', 'theta', 'kappa', 'gamma', 'rho']]
+        y = data['option price']
 
-StdScaler = StandardScaler()
-x_test = StdScaler.fit_transform(x_test)
+    x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.2, random_state=None, shuffle=True)
 
-ANN.score(x_test, y_test)
+    StdScaler = StandardScaler()
+    x_train = StdScaler.fit_transform(x_train)
 
-#%% 
+    ANN = MLPRegressor(hidden_layer_sizes=(8), activation='logistic', solver='sgd', batch_size=1024, learning_rate='constant', learning_rate_init=0.02, max_iter=100, tol=1e-10, shuffle=True, verbose=False, validation_fraction=0.1)
+    ANN.fit(x_train, y_train)
 
-# Heston
-from sklearn.neural_network import MLPRegressor
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
+    StdScaler = StandardScaler()
+    x_test = StdScaler.fit_transform(x_test)
 
-data = pd.read_csv('data_Heston.csv')
-x = data[['moneyness', 'tau', 'r', 'vol0', 'theta', 'kappa', 'gamma', 'rho']]
-y = data['option price']
-x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.2, random_state=None, shuffle=True)
+    score = ANN.score(x_test, y_test)
+    print(f'Model: {model}, ANN r2 = {score}')
 
-StdScaler = StandardScaler()
-x_train = StdScaler.fit_transform(x_train)
+LR('GBM')
+ANN('GBM')
+LR('Heston')
+ANN('Heston')
 
-ANN = MLPRegressor(hidden_layer_sizes=(4,), activation='relu', solver='adam', batch_size='auto', learning_rate_init=0.1, max_iter=5, shuffle=True, verbose=True, validation_fraction=0.1, beta_1=0.9, beta_2=0.999, epsilon=1e-08)
-ANN.fit(x_train, y_train)
-
-StdScaler = StandardScaler()
-x_test = StdScaler.fit_transform(x_test)
-
-ANN.score(x_test, y_test)
 # %%
