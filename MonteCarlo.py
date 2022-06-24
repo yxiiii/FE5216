@@ -7,7 +7,6 @@
 # b = a.generate_S(5,20)
 # c = a.pricer(optionType='c')
 import numpy as np
-import pandas as pd
 
 class MonteCarlo:
     def __init__(self, model, **kwargs):
@@ -135,31 +134,3 @@ class MonteCarlo:
         option_price = np.average(dc_payoff)
         self.option_price = option_price
         return option_price
-
-
-
-
-
-        
-             
-                    
-
-
-
-                
-
-
-
-#%%
-
-#%% 
-def a(mode, *args, **kwargs):
-    if mode == 'GBM':
-        print(args[0],args[1],kwargs['A'])
-    if mode == 'Heston':
-        print(args[0],args[1],kwargs['A'])
-    
-# %%
-import numpy as np 
-np.random.normal(size=(2,3))
-# %%
