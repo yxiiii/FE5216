@@ -86,20 +86,55 @@ class MonteCarlo:
                             + r * S[:, i] * dt \
                             + np.sqrt(v[:, i]) * S[:, i] * np.sqrt(dt) * dw_s[:, i]
             self.S = S    
+        return self.S
     
-    def LS(self, optionType='c', func_list=[lambda x: x ** 0, lambda x: x], buy_cost=0, sell_cost=0):
+    def LS(self, payoff, k=2):   
+        def LSLaguerre(k, x):
+            if k == 0:
+                return np.exp(-0.5 * x) * 1
+            elif k == 1:
+                return np.exp(-0.5 * x) * ( - x + 1 )
+            elif k == 2:
+                return np.exp(-0.5 * x) * (0.5 * ( x * x - 4 * x + 2 ))
+            else:
+                raise(ValueError('K at most 2'))
+
         dt = self.T / self.n_steps
         r = self.r 
-        q = self.q
-        df = np.exp(- r * dt)
-        df2 = np.exp(- (r - q) * dt)
-        S = self.S
-        n_paths = self.n_paths
-        n_steps = self.n_steps
+        T = self.T
 
-        pass
+        S = self.S.T
+        N1 = self.n_paths
+        M = self.n_steps
 
- 
+        V = np.zeros((M+1, N1))
+        V[-1, :] = np.exp( -r * T ) * payoff(S[-1, :])
+
+        h = np.zeros((N1, k, M+1))
+        hplus = np.zeros((k, N1, M+1))
+
+        for i in range(k):
+            h[:,i,:] = LSLaguerre(i, S).T
+
+        for i in range(1,M):
+            numerator = np.dot(h[:,:,i].T, h[:,:,i])
+            hplus[:,:,i] = np.dot(np.mat(numerator).I.A, h[:,:,i].T)
+
+        a = np.zeros((k, M+1))  # optimal weights 
+        C = np.zeros((M+1, N1)) # continuation value
+
+        for i in np.arange(M-1,-1,-1):    
+            a[:, i] = np.dot(hplus[:,:,i], V[i+1, :].reshape(1,-1).T).reshape(-1,)
+            for j in np.arange(0, N1):
+                # estimation of continuation value
+                C[i, j] = np.dot(a[:, i].reshape(-1,1).T, h[j,:,i].reshape(-1,1))
+                if np.exp(-r * (i-1) * dt) * payoff(S[i,j]) > C[i,j]:
+                    V[i,j] = np.exp(-r * i * dt) * payoff(S[i,j])
+                else:
+                    V[i,j] = V[i+1,j];
+
+        return np.average(V[1,:])
+
     def pricer(self, optionType='c', American=False):
 
         S0 = self.S0
@@ -126,16 +161,10 @@ class MonteCarlo:
             raise(ValueError('option type should be c or p.'))
 
         S = self.S
-        if not American:
+        if ( not American ) or ( American and optionType == 'c' and q == 0 ):
             payoff = f_payoff(S[:, -1])
             dc_payoff = payoff * np.exp(-r * T)
-        if American:
-            if optionType == 'c' and q == 0:
-                payoff = f_payoff(S[: -1])
-                dc_payoff = payoff * np.exp(-r * T)
-            else:
-                pass
+            return np.average(dc_payoff)
+        else:
+            return self.LS(f_payoff, k=2)
 
-        option_price = np.average(dc_payoff)
-        self.option_price = option_price
-        return option_price

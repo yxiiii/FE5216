@@ -52,109 +52,137 @@ from sklearn.linear_model import LinearRegression
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 
-# GBM
-def simulate(model='GBM'):
-    if model == 'GBM':
-        cols = ['moneyness', 'tau', 'r', 'vol', 'option price']
-        data = []
-        for i in tqdm(range(10000)):
-            moneyness = random.uniform(0.5, 1.5)
-            tau = random.uniform(0.3, 0.95)
-            r = random.uniform(0.03, 0.08)
-            vol = random.uniform(0.02, 0.9)
-            # log_moneyness = np.log( moneyness ) 
-            MC = MonteCarlo(model='GBM', S0=1, K=1/moneyness, T=tau, r=r, q=0, v=vol, method='formula')
-            MC.generate_S(1000,10)
-            option_price = MC.pricer(optionType='c')
-            data.append([moneyness, tau, r, vol, option_price])
-    
-    elif model == 'Heston':
-        cols = ['moneyness', 'tau', 'r', 'vol0', 'theta', 'kappa', 'gamma', 'rho', 'option price']
-        data = []
-        for i in tqdm(range(10000)):
-            moneyness = random.uniform(0.6, 1.4)
-            tau = random.uniform(0.1, 1.4)
-            r = random.uniform(0, 0.1)
-            vol0 = random.uniform(0.05, 0.5)
-            theta = random.uniform(0, 0.5)
-            kappa = random.uniform(0, 2)
-            gamma = random.uniform(0, 0.5)
-            rho = random.uniform(-0.95, 0)
-            # moneyness = np.log( moneyness )                      
-            MC = MonteCarlo(model='Heston', S0=1, K=1/moneyness, T=tau, r=r, q=0, v0=vol0, theta=theta, kappa=kappa, gamma=gamma, rho=rho)
-            MC.generate_S(1000,10)
-            option_price = MC.pricer(optionType='c')
-            data.append([moneyness, tau, r, vol0, theta, kappa, gamma, rho, option_price])
 
-    else: 
-        raise(ValueError(f'You input a not-supported model type: {model}'))
+class Learn():
+    def __init__(self, model='GBM', Type='European', option='call'):
+        self.model = model
+        self.Type = Type
+        self.option = option
 
-    data = pd.DataFrame(data, columns=cols)
-    data.to_csv(f'data_{model}.csv', index=False)
+    def simulate(self):
 
-# Use Linear Regression as benchmark
-def LR(model='GBM'):
-    if model == 'GBM':
-        data = pd.read_csv('data_GBM.csv')
-        x = data[['moneyness', 'tau', 'r', 'vol']]
-        y = data['option price']
-    if model == 'Heston':
-        data = pd.read_csv('data_Heston.csv')
-        x = data[['moneyness', 'tau', 'r', 'vol0', 'theta', 'kappa', 'gamma', 'rho']]
-        y = data['option price']
-    
-    x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.2, random_state=None, shuffle=True)
-    
-    StdScaler = StandardScaler()
-    x_train = StdScaler.fit_transform(x_train)
+        model = self.model 
+        Type = self.Type 
+        option = self.option
 
-    lr = LinearRegression()
-    lr.fit(x_train, y_train)
+        American = False if Type == 'European' else True
+        optionType = 'c' if option == 'call' else 'p'
 
-    StdScaler = StandardScaler()
-    x_test = StdScaler.fit_transform(x_test)
-
-    score = lr.score(x_test, y_test)
-    print(f'Model: {model}, LR r2 = {score}')
-
-def ANN(model='GBM'):
-    if model == 'GBM':
-        data = pd.read_csv('data_GBM.csv')
-        x = data[['moneyness', 'tau', 'r', 'vol']]
-        y = data['option price']
+        if model == 'GBM':
+            cols = ['moneyness', 'tau', 'r', 'vol', 'option price']
+            data = []
+            for i in tqdm(range(10000)):
+                moneyness = random.uniform(0.5, 1.5)
+                tau = random.uniform(0.3, 0.95)
+                r = random.uniform(0.03, 0.08)
+                vol = random.uniform(0.02, 0.9)
+                # log_moneyness = np.log( moneyness ) 
+                MC = MonteCarlo(model='GBM', S0=1, K=1/moneyness, T=tau, r=r, q=0, v=vol, method='MC')
+                MC.generate_S(1000,10)
+                option_price = MC.pricer(optionType=optionType, American=American)
+                data.append([moneyness, tau, r, vol, option_price])
         
-    if model == 'Heston':
-        data = pd.read_csv('data_Heston.csv')
-        x = data[['moneyness', 'tau', 'r', 'vol0', 'theta', 'kappa', 'gamma', 'rho']]
-        y = data['option price']
+        elif model == 'Heston':
+            cols = ['moneyness', 'tau', 'r', 'vol0', 'theta', 'kappa', 'gamma', 'rho', 'option price']
+            data = []
+            for i in tqdm(range(10000)):
+                moneyness = random.uniform(0.6, 1.4)
+                tau = random.uniform(0.1, 1.4)
+                r = random.uniform(0, 0.1)
+                vol0 = random.uniform(0.05, 0.5)
+                theta = random.uniform(0, 0.5)
+                kappa = random.uniform(0, 2)
+                gamma = random.uniform(0, 0.5)
+                rho = random.uniform(-0.95, 0)
+                # moneyness = np.log( moneyness )                      
+                MC = MonteCarlo(model='Heston', S0=1, K=1/moneyness, T=tau, r=r, q=0, v0=vol0, theta=theta, kappa=kappa, gamma=gamma, rho=rho)
+                MC.generate_S(1000,10)
+                option_price = MC.pricer(optionType=optionType, American=American)
+                data.append([moneyness, tau, r, vol0, theta, kappa, gamma, rho, option_price])
 
-    # size of hidden layer
-    x_num = x.shape[1]
-    hls = (x_num * 2, x_num * 2, x_num * 2)
+        else: 
+            raise(ValueError(f'You input a not-supported model type: {model}'))
 
-    x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.2, random_state=None, shuffle=True)
+        data = pd.DataFrame(data, columns=cols)
+        data.to_csv(f'data_{model}_{Type}_{option}.csv', index=False)
 
-    StdScaler = StandardScaler()
-    x_train = StdScaler.fit_transform(x_train)
+    # Use Linear Regression as benchmark
+    def LR(self):
 
-    ANN = MLPRegressor(hidden_layer_sizes=hls, activation='relu', solver='adam', batch_size=1024, learning_rate_init=0.02, max_iter=500, tol=1e-10, shuffle=True, verbose=True, validation_fraction=0.1)
-    ANN.fit(x_train, y_train)
+        model = self.model 
+        Type = self.Type 
+        option = self.option
 
-    StdScaler = StandardScaler()
-    x_test = StdScaler.fit_transform(x_test)
+        data = pd.read_csv(f'data_{model}_{Type}_{option}.csv')
 
-    score = ANN.score(x_test, y_test)
-    print(f'Model: {model}, ANN r2 = {score}')
+        if model == 'GBM':
+            x = data[['moneyness', 'tau', 'r', 'vol']]
+            y = data['option price']
+        if model == 'Heston':
+            x = data[['moneyness', 'tau', 'r', 'vol0', 'theta', 'kappa', 'gamma', 'rho']]
+            y = data['option price']
+        
+        x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.2, random_state=None, shuffle=True)
+        
+        StdScaler = StandardScaler()
+        x_train = StdScaler.fit_transform(x_train)
+
+        lr = LinearRegression()
+        lr.fit(x_train, y_train)
+
+        StdScaler = StandardScaler()
+        x_test = StdScaler.fit_transform(x_test)
+
+        score = lr.score(x_test, y_test)
+        print(f'Type: {Type}, option: {option}, Model: {model}, LR r2 = {score}')
+
+    def ANN(self):
+        
+        model = self.model 
+        Type = self.Type 
+        option = self.option
+
+        data = pd.read_csv(f'data_{model}_{Type}_{option}.csv')
+
+        if model == 'GBM':
+            x = data[['moneyness', 'tau', 'r', 'vol']]
+            y = data['option price']
+        if model == 'Heston':
+            x = data[['moneyness', 'tau', 'r', 'vol0', 'theta', 'kappa', 'gamma', 'rho']]
+            y = data['option price']
+
+        # size of hidden layer
+        x_num = x.shape[1]
+        hls = (x_num * 2, x_num * 2, x_num * 2)
+
+        x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.2, random_state=None, shuffle=True)
+
+        StdScaler = StandardScaler()
+        x_train = StdScaler.fit_transform(x_train)
+
+        ANN = MLPRegressor(hidden_layer_sizes=hls, activation='relu', solver='adam', batch_size=1024, learning_rate_init=0.02, max_iter=500, tol=1e-10, shuffle=True, verbose=False, validation_fraction=0.1)
+        ANN.fit(x_train, y_train)
+
+        StdScaler = StandardScaler()
+        x_test = StdScaler.fit_transform(x_test)
+
+        score = ANN.score(x_test, y_test)
+        print(f'Type: {Type}, option: {option}, Model: {model}, ANN r2 = {score}')
 
 if __name__ == '__main__':
 
-    # GBM
-    simulate('GBM')
-    LR('GBM')
-    ANN('GBM')
+    model = input('GBM or Heston?(g/h)')
+    Type = input('European or American?(e/a)')
+    option = input('Call or Put?(c/p)')
+    model = 'GBM' if model == 'g' else 'Heston'
+    Type = 'European' if Type == 'e' else 'American'
+    option = 'call' if option == 'c' else 'put'
 
-    # Heston
-    simulate('Heston')
-    LR('Heston')
-    ANN('Heston')
+    learn = Learn(model=model, Type=Type, option=option)
+    # learn.simulate()
+    learn.LR()
+    learn.ANN()
+
+
+
 
