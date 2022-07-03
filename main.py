@@ -37,20 +37,23 @@ class MonteCarlo:
 # 2. StandardScaler -> MaxminScaler [no much difference]
 # 3. remove S0, K, log( S0 / K ) -> S0 / K:
 #       GBM [LR from 0.89 -> 0.95, ANN from 0.95+ -> 0.9996]
-#       Hestion [LR from 0.9 -> 0.97, ANN from 0.95+ -> 0.996]
+#       Heston [LR from 0.9 -> 0.97, ANN from 0.95+ -> 0.996]
 # 4. Heston simulated path 500 -> 1000 [no much difference]
 # 5. give dimension to accelerate data generating [10 times faster]
 
-
+#%%
 from MonteCarlo import MonteCarlo
 import pandas as pd
 import numpy as np
 from tqdm import tqdm 
-import random
+import random 
 from sklearn.neural_network import MLPRegressor
 from sklearn.linear_model import LinearRegression
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import cross_val_score
+from tensorflow import keras
+
 
 
 class Learn():
@@ -72,14 +75,16 @@ class Learn():
             cols = ['moneyness', 'tau', 'r', 'vol', 'option price']
             data = []
             for i in tqdm(range(10000)):
-                moneyness = random.uniform(0.5, 1.5)
+                moneyness = random.uniform(0.7, 1.3)
                 tau = random.uniform(0.3, 0.95)
                 r = random.uniform(0.03, 0.08)
-                vol = random.uniform(0.02, 0.9)
+                vol = random.uniform(0.2, 0.9)
                 # log_moneyness = np.log( moneyness ) 
-                MC = MonteCarlo(model='GBM', S0=1, K=1/moneyness, T=tau, r=r, q=0, v=vol, method='MC')
+                MC = MonteCarlo(model='GBM', S0=1, K=1/moneyness, T=tau, r=r, q=0, v=vol, method='formula')
                 MC.generate_S(1000,10)
                 option_price = MC.pricer(optionType=optionType, American=American)
+                # option_price_c = MC.pricer(optionType='p', American=American)
+                # if option_price_c - option_price_p != 1 - 1/moneyness * np.exp() - option_price 
                 data.append([moneyness, tau, r, vol, option_price])
         
         elif model == 'Heston':
@@ -153,6 +158,40 @@ class Learn():
 
         # size of hidden layer
         x_num = x.shape[1]
+        hls = (x_num * 100, x_num * 100, x_num * 100)
+
+        # x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.2, random_state=None, shuffle=True)
+
+        # StdScaler = StandardScaler()
+        # x_train = StdScaler.fit_transform(x_train)
+
+        # StdScaler = StandardScaler()
+        # x_test = StdScaler.fit_transform(x_test)
+
+        ANN = MLPRegressor(hidden_layer_sizes=hls, activation='relu', solver='adam', batch_size=1024, learning_rate_init=0.02, max_iter=500, tol=1e-10, shuffle=True, verbose=False, validation_fraction=0.1)
+        print(hls)
+        print(cross_val_score(ANN, x, y, scoring='neg_mean_absolute_error', cv=3))
+        # ANN.fit(x_train, y_train)
+        # score = ANN.score(x_test, y_test)
+        # print(f'Type: {Type}, option: {option}, Model: {model}, ANN r2 = {score}')
+
+    def ANN_TF(self):
+
+        model = self.model 
+        Type = self.Type 
+        option = self.option
+
+        data = pd.read_csv(f'data_{model}_{Type}_{option}.csv')
+
+        if model == 'GBM':
+            x = data[['moneyness', 'tau', 'r', 'vol']]
+            y = data['option price']
+        if model == 'Heston':
+            x = data[['moneyness', 'tau', 'r', 'vol0', 'theta', 'kappa', 'gamma', 'rho']]
+            y = data['option price']
+
+        # size of hidden layer
+        x_num = x.shape[1]
         hls = (x_num * 2, x_num * 2, x_num * 2)
 
         x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.2, random_state=None, shuffle=True)
@@ -160,29 +199,59 @@ class Learn():
         StdScaler = StandardScaler()
         x_train = StdScaler.fit_transform(x_train)
 
-        ANN = MLPRegressor(hidden_layer_sizes=hls, activation='relu', solver='adam', batch_size=1024, learning_rate_init=0.02, max_iter=500, tol=1e-10, shuffle=True, verbose=False, validation_fraction=0.1)
-        ANN.fit(x_train, y_train)
 
-        StdScaler = StandardScaler()
-        x_test = StdScaler.fit_transform(x_test)
+        ANN = keras.models.Sequential([
+        keras.layers.Dense(8, input_shape=[4], activation='relu', name='L1'),
+        keras.layers.Dense(8, activation='relu', name='L2'),
+        keras.layers.Dense(8, activation='relu', name='L3'),
+        # keras.layers.Dense(200, activation='relu', name='L4'),
+        keras.layers.Dense(1, activation='linear', name='output'),
 
-        score = ANN.score(x_test, y_test)
-        print(f'Type: {Type}, option: {option}, Model: {model}, ANN r2 = {score}')
+    ])
 
+        ANN.compile(optimizer=keras.optimizers.Adam(learning_rate=0.01), loss='mape')
+        return ANN
 if __name__ == '__main__':
 
-    model = input('GBM or Heston?(g/h)')
-    Type = input('European or American?(e/a)')
-    option = input('Call or Put?(c/p)')
-    model = 'GBM' if model == 'g' else 'Heston'
-    Type = 'European' if Type == 'e' else 'American'
-    option = 'call' if option == 'c' else 'put'
+    # model = input('GBM or Heston?(g/h)')
+    # Type = input('European or American?(e/a)')
+    # option = input('Call or Put?(c/p)')
+    # model = 'GBM' if model == 'g' else 'Heston'
+    # Type = 'European' if Type == 'e' else 'American'
+    # option = 'call' if option == 'c' else 'put'
+    model = 'GBM' 
+    Type = 'European' 
+    option = 'call' 
 
     learn = Learn(model=model, Type=Type, option=option)
-    # learn.simulate()
-    learn.LR()
+    learn.simulate()
+    # learn.LR()
     learn.ANN()
 
+#%%
+from MonteCarlo import MonteCarlo
+import pandas as pd
+import numpy as np
+from tqdm import tqdm 
+import random 
 
+optionType = 'c'
+American = False
+cols = ['moneyness', 'tau', 'r', 'vol', 'option price']
+data = []
+for i in tqdm(range(10000)):
+    moneyness = random.uniform(0.7, 1.3)
+    tau = random.uniform(0.3, 0.95)
+    r = random.uniform(0.03, 0.08)
+    vol = random.uniform(0.2, 0.9)
+    # log_moneyness = np.log( moneyness ) 
+    MC = MonteCarlo(model='GBM', S0=1, K=1/moneyness, T=tau, r=r, q=0, v=vol, method='formula')
+    MC.generate_S(1000,10)
+    option_price = MC.pricer(optionType=optionType, American=American)
+    # option_price_c = MC.pricer(optionType='p', American=American)
+    # if option_price_c - option_price_p != 1 - 1/moneyness * np.exp() - option_price 
+    data.append([moneyness, tau, r, vol, option_price])
+data = pd.DataFrame(data, columns=cols)
+data['option price'].sort_values().head(500)
 
-
+# %%

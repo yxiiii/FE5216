@@ -148,9 +148,11 @@ class MonteCarlo:
                 from scipy.stats import norm 
                 v = self.v
                 N = norm.cdf
-                d1 = ( np.log( S0 / K ) + ( r - q + T * ( v ** 2 ) / 2) ) / ( v * np.sqrt(T) )
+                d1 = ( np.log( S0 / K ) + T * ( r - q + v ** 2 / 2) ) / ( v * np.sqrt(T) )
                 d2 = d1 - v * np.sqrt(T)
                 option_price = S0 * N(d1) - np.exp(-r * T) * K * N(d2) 
+                if option_price < 0:
+                    print(N(d1), N(d2) )
                 return option_price
 
         if optionType == 'c':
