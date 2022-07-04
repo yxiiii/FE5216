@@ -1,6 +1,7 @@
 #%%
 import numpy as np
 
+
 class MonteCarlo:
     def __init__(self, model, **kwargs):
         # basic params
@@ -12,8 +13,6 @@ class MonteCarlo:
         # extra params
         if model == 'GBM':
             self.modelType = 'GBM'
-            # use closed formula or MonteCarlo 
-            self.method = kwargs['method'] 
             # constant volatility
             self.v = kwargs['v']
         if model == 'Heston':
@@ -33,29 +32,29 @@ class MonteCarlo:
         
         self.n_paths = n_paths
         self.n_steps = n_steps
-        dt = self.T / n_steps
-        r = self.r - self.q
+        T = self.T
+        dt = T / n_steps
+        r = self.r
+        q = self.q
         S0 = self.S0
+        K = self.K
         
         if self.modelType == 'GBM':
-            # if we use closed-form formula, no need to generate S paths
-            if self.method == 'formula':
-                return
-            # f we use Monte Carlo, generate S paths
             v = self.v
-            dw = np.random.normal(size=(n_paths, n_steps))
             if antiVar == True:
-                n_paths *= 2
-                self.n_paths = n_paths
+                dw = np.random.normal( size=(int(n_paths / 2), n_steps) )
                 dw = np.concatenate((dw, -dw), axis=0)
+            else:
+                dw = np.random.normal( size=(n_paths, n_steps) )
             w = np.cumsum(dw, axis=1)
             log_S = np.log(S0) \
-                    + (r - v ** 2 / 2) * dt *  np.arange(1, n_steps + 1) \
+                    + (r - q - v ** 2 / 2) * dt *  np.arange(1, n_steps + 1) \
                     + v * np.sqrt(dt) * w
             S = np.exp(log_S)
             S0 = (np.ones(n_paths) * S0).reshape(-1, 1)
             S = np.concatenate((S0, S), axis=1) 
             self.S = S 
+
         if self.modelType == 'Heston':
             rho = self.rho
             v0 = self.v0
@@ -63,14 +62,16 @@ class MonteCarlo:
             kappa = self.kappa
             gamma = self.gamma
 
-            dw_v = np.random.normal(size=(n_paths, n_steps))
-            dw_s = np.random.normal(size=(n_paths, n_steps))
-            dw_s = rho * dw_v + np.sqrt(1 - rho ** 2) * dw_s 
             if antiVar == True:
-                n_paths *= 2
-                self.n_paths = n_paths
+                dw_v = np.random.normal(size=(int(n_paths / 2), n_steps))
+                dw_s = np.random.normal(size=(int(n_paths / 2), n_steps))
+                dw_s = rho * dw_v + np.sqrt(1 - rho ** 2) * dw_s 
                 dw_v = np.concatenate((dw_v, -dw_v), axis=0)
                 dw_s = np.concatenate((dw_s, -dw_s), axis=0)
+            else:
+                dw_v = np.random.normal(size=(n_paths, n_steps))
+                dw_s = np.random.normal(size=(n_paths, n_steps))
+                dw_s = rho * dw_v + np.sqrt(1 - rho ** 2) * dw_s 
             
             # Euler–Maruyama
             v = np.zeros((n_paths, n_steps + 1))
@@ -135,7 +136,17 @@ class MonteCarlo:
 
         return np.average(V[1,:])
 
-    def pricer(self, optionType='c', American=False):
+    def pricer(self, n_paths, n_steps, optionType='c', European=True, antiVar=True):
+        '''
+        if use GBM: 
+            if price European option or American option but dividend rate is 0:
+                generate S[T] (antithetic variates if necessary)
+                return  discounted np.average(payoff(S[T], K))
+        
+        Other conditions we need to generate price paths first:
+            1. use Heston
+            2. use GBM but to price American option with dividend rate not equal to 0
+        '''
 
         S0 = self.S0
         K = self.K
@@ -143,30 +154,44 @@ class MonteCarlo:
         r = self.r 
         q = self.q
         
-        if self.modelType == 'GBM':
-            if self.method == 'formula':
-                from scipy.stats import norm 
-                v = self.v
-                N = norm.cdf
-                d1 = ( np.log( S0 / K ) + T * ( r - q + v ** 2 / 2) ) / ( v * np.sqrt(T) )
-                d2 = d1 - v * np.sqrt(T)
-                option_price = S0 * N(d1) - np.exp(-r * T) * K * N(d2) 
-                if option_price < 0:
-                    print(N(d1), N(d2) )
-                return option_price
+        if n_paths % 2:
+            n_paths = n_paths +1
 
+        if self.modelType == 'GBM':
+            if European or ((not European) and (q == 0)):
+                if antiVar == True:
+                    dw = np.random.normal( size=(int(n_paths / 2), n_steps) )
+                    dw = np.concatenate((dw, -dw), axis=0)
+                else:
+                    dw = np.random.normal( size=(n_paths, n_steps) )
+                v = self.v
+                logStdDev = v * np.sqrt(T)
+                factor = S0 * np.exp( ( ( r - q ) - 0.5 * v * v ) * T )
+                k = K / factor
+                if optionType == 'c':
+                    f_payoff = lambda x: np.maximum(x - k, 0)
+                elif optionType == 'p':
+                    f_payoff = lambda x: np.maximum(k - x, 0) 
+                else: 
+                    raise(ValueError('option type should be call or put.'))
+                S = np.exp( logStdDev * dw )
+                payoff = f_payoff(S)
+                payoff = np.exp( -r * T ) * factor * payoff
+                return np.average(payoff)
+        
         if optionType == 'c':
             f_payoff = lambda x: np.maximum(x - K, 0)
         elif optionType == 'p':
             f_payoff = lambda x: np.maximum(K - x, 0) 
         else: 
-            raise(ValueError('option type should be c or p.'))
+            raise(ValueError('option type should be call or put.'))
 
+        self.generate_S(n_paths, n_steps, antiVar=True)
         S = self.S
-        if ( not American ) or ( American and optionType == 'c' and q == 0 ):
-            payoff = f_payoff(S[:, -1])
-            dc_payoff = payoff * np.exp(-r * T)
-            return np.average(dc_payoff)
-        else:
-            return self.LS(f_payoff, k=2)
 
+        if European:
+            payoff = f_payoff(S[:, -1])
+            payoff = np.exp(-r * T) * payoff
+            return np.average(payoff)
+        if not European:
+            return self.LS(f_payoff, k=2)
