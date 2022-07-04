@@ -86,9 +86,14 @@ class MonteCarlo:
                 S[:, i+1] = S[:, i] \
                             + r * S[:, i] * dt \
                             + np.sqrt(v[:, i]) * S[:, i] * np.sqrt(dt) * dw_s[:, i]
+            self.v = v
             self.S = S    
-        return self.S
-    
+    def get_path(self, type='v'):
+        if type == 'v': 
+            return self.v
+        if type == 'S':
+            return self.S
+
     def LS(self, payoff, k=2):   
         def LSLaguerre(k, x):
             if k == 0:
@@ -175,6 +180,7 @@ class MonteCarlo:
                 else: 
                     raise(ValueError('option type should be call or put.'))
                 S = np.exp( logStdDev * dw )
+                self.S = S * factor
                 payoff = f_payoff(S)
                 payoff = np.exp( -r * T ) * factor * payoff
                 return np.average(payoff)
