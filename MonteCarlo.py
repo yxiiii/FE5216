@@ -62,6 +62,9 @@ class MonteCarlo:
             kappa = self.kappa
             gamma = self.gamma
 
+            if n_paths % 2:
+                n_paths = n_paths +1
+
             if antiVar == True:
                 dw_v = np.random.normal(size=(int(n_paths / 2), n_steps))
                 dw_s = np.random.normal(size=(int(n_paths / 2), n_steps))
@@ -73,19 +76,22 @@ class MonteCarlo:
                 dw_s = np.random.normal(size=(n_paths, n_steps))
                 dw_s = rho * dw_v + np.sqrt(1 - rho ** 2) * dw_s 
             
+            # Full Truncation
+            f1 = lambda x: x
+            f2 = lambda x: np.maximum(x, 0)
+            f3 = lambda x: np.maximum(x, 0)
+
             # Euler–Maruyama
             v = np.zeros((n_paths, n_steps + 1))
             v[:, 0] = v0
             S = np.zeros((n_paths, n_steps + 1))
             S[:, 0] = S0
             for i in range(n_steps):
-                v[:, i+1] = v[:, i] \
-                            + kappa * ( theta - v[:, i]) * dt \
-                            + gamma * np.sqrt(v[:, i]) * np.sqrt(dt) * dw_v[:, i]
-                v[:, i+1] = np.absolute(v[:, i+1])
-                S[:, i+1] = S[:, i] \
-                            + r * S[:, i] * dt \
-                            + np.sqrt(v[:, i]) * S[:, i] * np.sqrt(dt) * dw_s[:, i]
+                v[:, i+1] = f1(v[:, i]) + kappa * ( theta - f2(v[:, i]) ) * dt + gamma * np.sqrt(f3(v[:, i])) * np.sqrt(dt) * dw_v[:, i]
+                S[:, i+1] = S[:, i] * np.exp( (r - q - 0.5 * f2(v[:, i])) * dt + np.sqrt(f3(v[:, i])) * np.sqrt(dt) * dw_s[:, i] )
+                # S[:, i+1] = S[:, i] \
+                #             + (r - q) * S[:, i] * dt \
+                #             + np.sqrt(v[:, i]) * S[:, i] * np.sqrt(dt) * dw_s[:, i]
             self.v = v
             self.S = S    
     def get_path(self, type='v'):
